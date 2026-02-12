@@ -1,0 +1,10 @@
+{{- /* Validate required values before creating any resources */ -}}
+{{- include "store.validateValues" . -}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "store.namespace" . }}
+  labels:
+    {{- include "store.labels" . | nindent 4 }}
+    name: {{ include "store.namespace" . }}
+    platform.urumi.io/managed: "true"

@@ -1,0 +1,19 @@
+# Controller dependencies
+
+# kopf - Kubernetes Operator Pythonic Framework
+kopf>=1.37
+
+# Kubernetes Python client (sync)
+kubernetes>=28.1.0
+
+# Kubernetes Python client (async)
+kubernetes_asyncio>=28.1.0
+
+# YAML parsing
+PyYAML==6.0.1
+
+# Logging
+python-json-logger==2.0.7
+
+# Date/time handling
+python-dateutil==2.8.2

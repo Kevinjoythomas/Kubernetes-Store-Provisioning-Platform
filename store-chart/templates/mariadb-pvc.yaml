@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "store.fullname" . }}-mariadb-data
+  namespace: {{ include "store.namespace" . }}
+  labels:
+    {{- include "store.mariadb.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.mariadb.storage.accessMode }}
+  {{- if .Values.mariadb.storage.storageClassName }}
+  storageClassName: {{ .Values.mariadb.storage.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.mariadb.storage.size }}

@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "store.fullname" . }}-wordpress
+  namespace: {{ include "store.namespace" . }}
+  labels:
+    {{- include "store.wordpress.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.wordpress.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "store.wordpress.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "store.wordpress.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+      - name: wordpress
+        image: "{{ .Values.wordpress.image.repository }}:{{ .Values.wordpress.image.tag }}"
+        imagePullPolicy: {{ .Values.wordpress.image.pullPolicy }}
+        env:
+        # Database connection
+        - name: WORDPRESS_DB_HOST
+          value: {{ include "store.fullname" . }}-mariadb:3306
+        - name: WORDPRESS_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "store.fullname" . }}-mariadb
+              key: mariadb-user
+        - name: WORDPRESS_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "store.fullname" . }}-mariadb
+              key: mariadb-password
+        - name: WORDPRESS_DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "store.fullname" . }}-mariadb
+              key: mariadb-database
+        # WordPress configuration
+        - name: WORDPRESS_CONFIG_EXTRA
+          value: |
+            define('DISABLE_WP_CRON', {{ .Values.wordpress.config.disableWpCron }});
+            define('WP_MEMORY_LIMIT', '256M');
+            define('WP_MAX_MEMORY_LIMIT', '512M');
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        {{- if .Values.wordpress.livenessProbe.enabled }}
+        livenessProbe:
+          tcpSocket:
+            port: http
+          initialDelaySeconds: {{ .Values.wordpress.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.wordpress.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.wordpress.livenessProbe.timeoutSeconds }}
+          successThreshold: {{ .Values.wordpress.livenessProbe.successThreshold }}
+          failureThreshold: {{ .Values.wordpress.livenessProbe.failureThreshold }}
+        {{- end }}
+        {{- if .Values.wordpress.readinessProbe.enabled }}
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ include "store.hostname" . }}
+          initialDelaySeconds: {{ .Values.wordpress.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.wordpress.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.wordpress.readinessProbe.timeoutSeconds }}
+          successThreshold: {{ .Values.wordpress.readinessProbe.successThreshold }}
+          failureThreshold: {{ .Values.wordpress.readinessProbe.failureThreshold }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.wordpress.resources | nindent 10 }}
+        volumeMounts:
+        - name: wordpress-data
+          mountPath: /var/www/html
+      volumes:
+      - name: wordpress-data
+        emptyDir: {}

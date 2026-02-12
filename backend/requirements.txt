@@ -1,0 +1,19 @@
+# Backend API dependencies
+
+# Flask framework
+flask>=3.0
+flask-restful>=0.3.10
+flask-cors>=4.0
+flask-limiter>=3.5
+
+# Kubernetes Python client
+kubernetes>=28.1.0
+
+# Production WSGI server
+gunicorn>=21.2
+
+# YAML parsing (for kubeconfig)
+PyYAML==6.0.1
+
+# Logging
+python-json-logger==2.0.7

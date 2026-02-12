@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "store.fullname" . }}-wordpress
+  namespace: {{ include "store.namespace" . }}
+  labels:
+    {{- include "store.wordpress.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  selector:
+    {{- include "store.wordpress.selectorLabels" . | nindent 4 }}

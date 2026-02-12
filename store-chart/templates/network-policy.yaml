@@ -1,0 +1,100 @@
+{{- if .Values.networkPolicy.enabled -}}
+{{- /*
+NetworkPolicy for store isolation
+Default deny all ingress and egress, with explicit allow rules for necessary traffic
+*/ -}}
+---
+# NetworkPolicy for WordPress pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "store.fullname" . }}-wordpress
+  namespace: {{ include "store.namespace" . }}
+  labels:
+    {{- include "store.wordpress.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "store.wordpress.selectorLabels" . | nindent 6 }}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from ingress-nginx namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 80
+  egress:
+  # Allow DNS resolution (to kube-system namespace)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow connection to MariaDB in the same namespace
+  - to:
+    - podSelector:
+        matchLabels:
+          {{- include "store.mariadb.selectorLabels" . | nindent 10 }}
+    ports:
+    - protocol: TCP
+      port: 3306
+  # Allow HTTP/HTTPS egress for plugin downloads and API calls
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 443
+
+---
+# NetworkPolicy for MariaDB pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "store.fullname" . }}-mariadb
+  namespace: {{ include "store.namespace" . }}
+  labels:
+    {{- include "store.mariadb.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "store.mariadb.selectorLabels" . | nindent 6 }}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow ingress from WordPress pods in the same namespace
+  - from:
+    - podSelector:
+        matchLabels:
+          {{- include "store.wordpress.selectorLabels" . | nindent 10 }}
+    ports:
+    - protocol: TCP
+      port: 3306
+  # Allow ingress from setup job pods
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/component: setup-job
+    ports:
+    - protocol: TCP
+      port: 3306
+  egress:
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+{{- end }}

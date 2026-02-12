@@ -1,0 +1,16 @@
+apiVersion: v2
+name: platform
+description: Helm chart for Store Provisioning Platform - API, Dashboard, and Controller
+type: application
+version: 0.1.0
+appVersion: "1.0"
+keywords:
+  - platform
+  - controller
+  - api
+  - kubernetes-operator
+maintainers:
+  - name: Urumi Platform Team
+home: https://github.com/urumi/store-platform
+sources:
+  - https://github.com/urumi/store-platform

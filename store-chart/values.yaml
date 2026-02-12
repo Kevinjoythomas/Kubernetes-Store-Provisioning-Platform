@@ -1,0 +1,174 @@
+# Default values for store chart
+# This chart provisions a single WooCommerce store with WordPress and MariaDB
+
+# Store identification - REQUIRED
+storeId: ""  # Must be provided: unique identifier for this store (e.g., "shop1", "mystore")
+storeType: "woocommerce"  # Store engine type: woocommerce or medusa
+displayName: ""  # Human-readable store name (defaults to storeId if not provided)
+
+# Domain configuration
+baseDomain: "local.store"  # Base domain for store ingress (e.g., storeId.baseDomain = shop1.local.store)
+
+# Namespace naming (automatically generated as store-{storeId})
+# The namespace will be created by this chart
+
+# MariaDB configuration
+mariadb:
+  image:
+    repository: mariadb
+    tag: "10.11"
+    pullPolicy: IfNotPresent
+
+  # Database credentials (generated automatically if not provided)
+  auth:
+    database: "woocommerce"
+    username: "woocommerce"
+    # password and rootPassword are auto-generated using Helm's randAlphaNum
+    # They persist across upgrades using the lookup function
+
+  # Storage configuration
+  storage:
+    size: 1Gi
+    storageClassName: ""  # Use default storage class
+    accessMode: ReadWriteOnce
+
+  # Resource limits and requests
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  # Probes configuration
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 3
+
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 3
+
+# WordPress configuration
+wordpress:
+  image:
+    repository: wordpress
+    tag: "6.4-php8.1-apache"
+    pullPolicy: IfNotPresent
+
+  # WordPress admin user (password auto-generated)
+  admin:
+    username: "admin"
+    email: ""  # Defaults to admin@{storeId}.{baseDomain}
+    # password is auto-generated
+
+  # WordPress configuration
+  config:
+    # Disable WP-CRON via HTTP (use system cron in production)
+    disableWpCron: false
+
+  # Resource limits and requests
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  # Replica count (should be 1 for local, can be increased for HA)
+  replicaCount: 1
+
+  # Probes configuration
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 3
+
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 3
+
+# WordPress Setup Job configuration
+# This Job installs WordPress core, WooCommerce plugin, and configures the store
+wordpressSetup:
+  image:
+    repository: wordpress
+    tag: "cli-2.10-php8.1"
+    pullPolicy: IfNotPresent
+
+  # Job configuration
+  backoffLimit: 3  # Retry up to 3 times on failure
+  ttlSecondsAfterFinished: 86400  # Clean up job after 24 hours
+
+  # Sample products to create
+  sampleProducts:
+    - name: "Sample T-Shirt"
+      price: "19.99"
+      description: "A comfortable cotton t-shirt"
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+  # Host is automatically generated as {storeId}.{baseDomain}
+  tls:
+    enabled: false  # Enable in production with cert-manager
+    secretName: ""  # TLS certificate secret
+
+# Resource Quota per store namespace
+resourceQuota:
+  enabled: true
+  hard:
+    pods: "4"
+    requests.cpu: "1"
+    requests.memory: "2Gi"
+    limits.cpu: "2"
+    limits.memory: "3Gi"
+    requests.storage: "5Gi"
+
+# LimitRange per store namespace
+limitRange:
+  enabled: true
+  limits:
+    # Default container limits
+    - type: Container
+      default:
+        memory: "512Mi"
+        cpu: "500m"
+      defaultRequest:
+        memory: "256Mi"
+        cpu: "200m"
+      max:
+        memory: "512Mi"
+        cpu: "500m"
+
+# NetworkPolicy configuration
+networkPolicy:
+  enabled: true
+  # Additional egress rules can be added here if needed
+
+# Naming overrides (usually not needed)
+nameOverride: ""
+fullnameOverride: ""

@@ -1,0 +1,16 @@
+apiVersion: v2
+name: store
+description: Helm chart for provisioning individual WooCommerce stores with WordPress and MariaDB
+type: application
+version: 0.1.0
+appVersion: "1.0"
+keywords:
+  - woocommerce
+  - wordpress
+  - ecommerce
+  - mariadb
+maintainers:
+  - name: Urumi Platform Team
+home: https://github.com/urumi/store-platform
+sources:
+  - https://github.com/urumi/store-platform

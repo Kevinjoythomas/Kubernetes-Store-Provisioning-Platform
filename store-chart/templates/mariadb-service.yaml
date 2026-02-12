@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "store.fullname" . }}-mariadb
+  namespace: {{ include "store.namespace" . }}
+  labels:
+    {{- include "store.mariadb.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - name: mysql
+    port: 3306
+    targetPort: mysql
+    protocol: TCP
+  selector:
+    {{- include "store.mariadb.selectorLabels" . | nindent 4 }}

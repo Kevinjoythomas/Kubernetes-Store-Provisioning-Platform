@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "store.fullname" . }}-mariadb
+  namespace: {{ include "store.namespace" . }}
+  labels:
+    {{- include "store.mariadb.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "store.fullname" . }}-mariadb
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "store.mariadb.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "store.mariadb.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+      - name: mariadb
+        image: "{{ .Values.mariadb.image.repository }}:{{ .Values.mariadb.image.tag }}"
+        imagePullPolicy: {{ .Values.mariadb.image.pullPolicy }}
+        env:
+        - name: MARIADB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "store.fullname" . }}-mariadb
+              key: mariadb-root-password
+        - name: MARIADB_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "store.fullname" . }}-mariadb
+              key: mariadb-database
+        - name: MARIADB_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "store.fullname" . }}-mariadb
+              key: mariadb-user
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "store.fullname" . }}-mariadb
+              key: mariadb-password
+        ports:
+        - name: mysql
+          containerPort: 3306
+          protocol: TCP
+        {{- if .Values.mariadb.livenessProbe.enabled }}
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - mysqladmin ping -u root -p${MARIADB_ROOT_PASSWORD}
+          initialDelaySeconds: {{ .Values.mariadb.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.mariadb.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.mariadb.livenessProbe.timeoutSeconds }}
+          successThreshold: {{ .Values.mariadb.livenessProbe.successThreshold }}
+          failureThreshold: {{ .Values.mariadb.livenessProbe.failureThreshold }}
+        {{- end }}
+        {{- if .Values.mariadb.readinessProbe.enabled }}
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - mysqladmin ping -u root -p${MARIADB_ROOT_PASSWORD}
+          initialDelaySeconds: {{ .Values.mariadb.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.mariadb.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.mariadb.readinessProbe.timeoutSeconds }}
+          successThreshold: {{ .Values.mariadb.readinessProbe.successThreshold }}
+          failureThreshold: {{ .Values.mariadb.readinessProbe.failureThreshold }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.mariadb.resources | nindent 10 }}
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ include "store.fullname" . }}-mariadb-data

@@ -1,0 +1,110 @@
+# Local development values (for Kind cluster)
+# Use: helm install store-platform ./platform-chart -f ./platform-chart/values-local.yaml
+
+# Global settings
+baseDomain: local.store
+platformNamespace: store-platform
+
+# API
+api:
+  image:
+    repository: store-platform-api
+    tag: local
+    pullPolicy: Never  # Use local images loaded into Kind, don't pull from registry
+
+  replicas: 1
+
+  env:
+    - name: PLATFORM_NAMESPACE
+      value: "store-platform"
+    - name: K8S_IN_CLUSTER
+      value: "true"
+    - name: BASE_DOMAIN
+      value: "local.store"
+    - name: MAX_STORES_PER_USER
+      value: "10"
+    - name: RATE_LIMIT
+      value: "100 per minute"
+    - name: DEBUG
+      value: "false"
+
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Dashboard
+dashboard:
+  image:
+    repository: store-platform-dashboard
+    tag: local
+    pullPolicy: Never  # Use local images loaded into Kind, don't pull from registry
+
+  replicas: 1
+
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# Controller
+controller:
+  image:
+    repository: store-platform-controller
+    tag: local
+    pullPolicy: Never  # Use local images loaded into Kind, don't pull from registry
+
+  replicas: 1
+
+  env:
+    - name: STORE_CHART_PATH
+      value: "/charts/store-chart"
+    - name: BASE_DOMAIN
+      value: "local.store"
+    - name: PLATFORM_NAMESPACE
+      value: "store-platform"
+    - name: LOG_LEVEL
+      value: "INFO"
+    - name: PYTHONUNBUFFERED
+      value: "1"
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+  # Service account for controller (must have RBAC permissions)
+  serviceAccount:
+    create: true
+    name: store-controller
+
+# Ingress
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+
+  hosts:
+    - host: api.local.store
+      paths:
+        - path: /
+          pathType: Prefix
+          service: platform-api
+          port: 5000
+    - host: dashboard.local.store
+      paths:
+        - path: /
+          pathType: Prefix
+          service: platform-dashboard
+          port: 80
+
+  tls: []  # No TLS for local development

@@ -1,0 +1,153 @@
+# Production values (for k3s cluster on VPS)
+# Use: helm install store-platform ./platform-chart -f ./platform-chart/values-prod.yaml
+#
+# Before deploying:
+# 1. Replace "yourdomain.com" with your actual domain
+# 2. Replace "your-registry" with your container registry (e.g., ghcr.io/username)
+# 3. Update image tags to match your release version
+# 4. Configure TLS/cert-manager if needed
+# 5. Review resource limits based on your VPS capacity
+
+# Global settings
+baseDomain: yourdomain.com  # CHANGE THIS to your production domain
+platformNamespace: store-platform
+
+# API
+api:
+  image:
+    repository: your-registry/store-platform-api  # CHANGE THIS
+    tag: v1.0.0  # CHANGE THIS to your release tag
+    pullPolicy: IfNotPresent
+
+  replicas: 2  # Run 2 replicas for high availability
+
+  env:
+    - name: PLATFORM_NAMESPACE
+      value: "store-platform"
+    - name: K8S_IN_CLUSTER
+      value: "true"
+    - name: BASE_DOMAIN
+      value: "yourdomain.com"  # CHANGE THIS
+    - name: MAX_STORES_PER_USER
+      value: "50"  # Increase for production
+    - name: RATE_LIMIT
+      value: "200 per minute"  # Higher limit for production
+    - name: DEBUG
+      value: "false"
+    - name: FLASK_ENV
+      value: "production"
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+# Dashboard
+dashboard:
+  image:
+    repository: your-registry/store-platform-dashboard  # CHANGE THIS
+    tag: v1.0.0  # CHANGE THIS to your release tag
+    pullPolicy: IfNotPresent
+
+  replicas: 2  # Run 2 replicas for high availability
+
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Controller
+controller:
+  image:
+    repository: your-registry/store-platform-controller  # CHANGE THIS
+    tag: v1.0.0  # CHANGE THIS to your release tag
+    pullPolicy: IfNotPresent
+
+  replicas: 1  # Keep at 1 (kopf handles single-instance coordination)
+
+  env:
+    - name: STORE_CHART_PATH
+      value: "/charts/store-chart"
+    - name: BASE_DOMAIN
+      value: "yourdomain.com"  # CHANGE THIS
+    - name: PLATFORM_NAMESPACE
+      value: "store-platform"
+    - name: LOG_LEVEL
+      value: "INFO"
+    - name: PYTHONUNBUFFERED
+      value: "1"
+
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "2000m"
+
+  # Service account for controller (must have RBAC permissions)
+  serviceAccount:
+    create: true
+    name: store-controller
+
+# Ingress
+ingress:
+  enabled: true
+  className: nginx
+
+  # Annotations for production
+  annotations:
+    # Uncomment if using cert-manager for TLS
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+
+  hosts:
+    - host: api.yourdomain.com  # CHANGE THIS
+      paths:
+        - path: /
+          pathType: Prefix
+          service: platform-api
+          port: 5000
+    - host: dashboard.yourdomain.com  # CHANGE THIS
+      paths:
+        - path: /
+          pathType: Prefix
+          service: platform-dashboard
+          port: 80
+
+  # TLS configuration
+  # Uncomment and configure if using TLS
+  tls: []
+  # tls:
+  #   - secretName: platform-tls
+  #     hosts:
+  #       - api.yourdomain.com
+  #       - dashboard.yourdomain.com
+
+# Storage configuration for production
+storage:
+  # Storage class for store PVCs
+  # Options: local-path (k3s default), longhorn, nfs-client, etc.
+  storageClassName: local-path  # CHANGE THIS if using different storage
+
+# Image pull secrets for private registry
+# Create with: kubectl create secret docker-registry regcred --docker-server=<registry> --docker-username=<username> --docker-password=<password>
+imagePullSecrets: []
+# imagePullSecrets:
+#   - name: regcred
+
+# Monitoring and observability (optional)
+# Uncomment if you have Prometheus/Grafana installed
+monitoring:
+  enabled: false
+  # serviceMonitor:
+  #   enabled: true
+  #   interval: 30s
