@@ -2,6 +2,8 @@
 
 A production-ready platform for provisioning on-demand WooCommerce e-commerce stores on Kubernetes. Each store runs as isolated resources in its own namespace with complete lifecycle management.
 
+**Built for the Urumi AI SDE Internship Assignment**
+
 ## Architecture
 
 ```
@@ -49,321 +51,647 @@ A production-ready platform for provisioning on-demand WooCommerce e-commerce st
 - **Resource Management**: ResourceQuotas and LimitRanges per store
 - **Automated Setup**: WordPress + WooCommerce installation, sample products, payment gateways
 - **Production Ready**: Helm charts for local (Kind) and production (k3s) deployments
+- **Idempotent Operations**: Helm lookup for secret persistence, resumable controller logic
 - **Lifecycle Management**: Create, monitor, and delete stores via Kubernetes native CRDs
+- **Modern UI**: Dark-themed React dashboard with real-time updates
 
 ## Components
 
 ### Platform Components (platform-chart)
-- **Flask API**: REST API for store management
+- **Flask API**: REST API for store management (CRUD operations)
 - **React Dashboard**: Web UI for creating and managing stores
 - **kopf Controller**: Kubernetes operator that watches Store CRDs and provisions infrastructure
 
 ### Store Components (store-chart)
 Each store includes:
 - **WordPress 6.4 + WooCommerce**: E-commerce application
-- **MariaDB 10.11**: Database with persistence
+- **MariaDB 10.11**: Database with persistent storage
 - **NGINX Ingress**: External access with custom subdomain
-- **Setup Job**: Automated WooCommerce installation and configuration
-- **Security**: NetworkPolicy, ResourceQuota, LimitRange
+- **Setup Job**: Automated WooCommerce installation with sample products
+- **Security**: NetworkPolicy (default deny), ResourceQuota, LimitRange
+- **Isolation**: Dedicated namespace per store
 
 ## Prerequisites
 
-- **Docker**: For building container images
+- **Docker**: For building container images (v24+)
 - **kubectl**: Kubernetes CLI (v1.27+)
 - **Helm**: Package manager (v3.12+)
-- **Kind**: Local Kubernetes clusters (v0.20+) - for development
+- **Kind**: Local Kubernetes clusters (v0.20+) - for development only
 - **Git**: Version control
+- **Bash**: For running setup scripts (Linux/Mac/WSL on Windows)
 
-## Quick Start
+Optional:
+- **Node.js 20+**: Only needed for frontend development (not for deployment)
 
-### 1. Setup Local Cluster
+## Quick Start (5 Minutes)
+
+### 1. One-Command Setup
 
 ```bash
-# Create Kind cluster with NGINX ingress
+# Clone the repository
+git clone <repo-url>
+cd store-platform
+
+# Run the complete setup script
 ./setup-cluster.sh
-
-# Verify cluster is ready
-kubectl cluster-info
-kubectl get pods -n ingress-nginx
 ```
 
-### 2. Install Platform Components
+This script will:
+1. ✅ Create a Kind cluster with ingress support
+2. ✅ Install NGINX ingress controller
+3. ✅ Build all Docker images (API, controller, dashboard)
+4. ✅ Load images into Kind
+5. ✅ Install the platform chart with all components
+6. ✅ Wait for everything to be ready
+
+**Total time: ~3-5 minutes**
+
+### 2. Add DNS Entries
 
 ```bash
-# Install the platform (API, Dashboard, Controller)
-helm install platform ./platform-chart \
-  -f ./platform-chart/values-local.yaml \
-  --create-namespace \
-  --namespace platform
+# Option 1: Use the helper script (requires sudo)
+sudo bash add-hosts.sh
 
-# Verify platform is running
-kubectl get pods -n platform
-kubectl get crd stores.platform.urumi.io
+# Option 2: Manually add to /etc/hosts (Linux/Mac) or C:\Windows\System32\drivers\etc\hosts (Windows)
+127.0.0.1 dashboard.local.store api.local.store
 ```
 
-### 3. Create a Test Store Manually
+### 3. Access the Dashboard
+
+Open your browser and navigate to:
+
+🌐 **http://dashboard.local.store**
+
+You should see the Store Platform Dashboard with a dark theme!
+
+### 4. Create Your First Store
+
+1. Click **"+ Create Store"** button
+2. Enter a store name (e.g., "My Test Shop")
+3. Select **WooCommerce** (Medusa coming soon)
+4. Click **"Create Store"**
+5. Wait ~1-2 minutes for provisioning (watch the status change)
+6. Once status is **"Ready"**, click the store URL
+
+### 5. Set Up DNS for Store URLs (Important!)
+
+Individual stores get their own subdomain (e.g., `myshop-abc123.local.store`). You have two options:
+
+#### Option A: dnsmasq (Recommended - Wildcard DNS)
+
+**On macOS:**
+```bash
+# Install dnsmasq
+brew install dnsmasq
+
+# Configure wildcard for .local.store
+echo 'address=/local.store/127.0.0.1' >> $(brew --prefix)/etc/dnsmasq.conf
+
+# Start dnsmasq
+sudo brew services start dnsmasq
+
+# Configure macOS to use dnsmasq for .local.store
+sudo mkdir -p /etc/resolver
+echo "nameserver 127.0.0.1" | sudo tee /etc/resolver/local.store
+
+# Test
+ping mystore-abc123.local.store  # Should resolve to 127.0.0.1
+```
+
+**On Linux:**
+```bash
+# Install dnsmasq
+sudo apt-get update && sudo apt-get install dnsmasq
+
+# Configure wildcard for .local.store
+echo 'address=/local.store/127.0.0.1' | sudo tee -a /etc/dnsmasq.conf
+
+# Restart dnsmasq
+sudo systemctl restart dnsmasq
+
+# Configure NetworkManager to use dnsmasq
+echo "[main]
+dns=dnsmasq" | sudo tee /etc/NetworkManager/NetworkManager.conf
+
+# Restart NetworkManager
+sudo systemctl restart NetworkManager
+```
+
+#### Option B: Manual /etc/hosts Entries
+
+After creating each store, add its URL to `/etc/hosts`:
 
 ```bash
-# Create a Store CRD
-kubectl apply -f - <<EOF
-apiVersion: platform.urumi.io/v1
-kind: Store
-metadata:
-  name: demo-store
-  namespace: platform
-spec:
-  storeType: woocommerce
-  displayName: "Demo Store"
-  baseDomain: local.store
-EOF
-
-# Watch the store being provisioned
-kubectl get stores -n platform -w
+# Get the store ID from the dashboard
+127.0.0.1 myshop-abc123.local.store
 ```
 
-### 4. Test Store Chart Directly (Optional)
+This is tedious but works if you only have a few stores.
 
+### 6. Access Your Store
+
+Once the store status is **"Ready"**, you can:
+
+**Visit the store frontend:**
+```
+http://<store-id>.local.store
+```
+
+**Access WordPress admin:**
+```
+URL: http://<store-id>.local.store/wp-admin
+Username: admin
+Password: [Get from dashboard or run command below]
+```
+
+**Get WordPress admin password:**
 ```bash
-# Install a store directly using Helm (bypassing controller)
-helm install test-store ./store-chart \
-  --namespace store-test \
-  --create-namespace \
-  --set storeId=test \
-  --set storeType=woocommerce \
-  --set baseDomain=local.store \
-  --set displayName="Test Store"
-
-# Watch resources being created
-kubectl get all -n store-test
-
-# Check the setup job
-kubectl logs -n store-test job/test-store-wordpress-setup
-
-# Wait for WordPress to be ready
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=wordpress -n store-test --timeout=300s
+# Find your store ID from the dashboard, then run:
+kubectl get secret -n store-<store-id> <store-id>-wordpress -o jsonpath='{.data.admin-password}' | base64 -d
 ```
 
-### 5. Access the Store
+### 7. Place a Test Order
 
-Add to your `/etc/hosts` (Linux/Mac) or `C:\Windows\System32\drivers\etc\hosts` (Windows):
+1. Visit your store: `http://<store-id>.local.store`
+2. Click on "Sample T-Shirt" product
+3. Click "Add to Cart"
+4. Click "View Cart" → "Proceed to Checkout"
+5. Fill in billing details (use any test data)
+6. Select "Cash on Delivery" payment method
+7. Click "Place Order"
+8. ✅ Order complete! Check WooCommerce admin to see the order.
 
-```
-127.0.0.1 test.local.store
-127.0.0.1 dashboard.local.store
-127.0.0.1 api.local.store
-```
+### 8. Delete a Store
 
-Then visit:
-- **Store**: http://test.local.store
-- **WordPress Admin**: http://test.local.store/wp-admin
-  - Username: `admin`
-  - Password: Get from secret: `kubectl get secret -n store-test test-store-wordpress -o jsonpath='{.data.admin-password}' | base64 -d`
+From the dashboard:
+1. Click the **"Delete"** button on any store card
+2. Confirm deletion
+3. The controller will clean up all resources (namespace, PVCs, secrets)
 
-## Development Workflow
-
-### Project Structure
+## Project Structure
 
 ```
 store-platform/
+├── setup-cluster.sh                   # One-command setup script
+├── teardown.sh                        # Complete cleanup script
+├── add-hosts.sh                       # Helper to add DNS entries
 ├── README.md                          # This file
-├── setup-cluster.sh                   # Kind cluster setup
-├── platform-chart/                    # Helm chart for platform components
+│
+├── platform-chart/                    # Helm chart for platform
 │   ├── Chart.yaml
 │   ├── values.yaml                    # Default values
-│   ├── values-local.yaml              # Local development overrides
-│   ├── values-prod.yaml               # Production overrides
-│   └── templates/                     # Kubernetes manifests
+│   ├── values-local.yaml              # Local development (Kind)
+│   ├── values-prod.yaml               # Production (k3s)
+│   └── templates/
 │       ├── _helpers.tpl
-│       ├── store-crd.yaml             # Custom Resource Definition
-│       ├── controller-rbac.yaml       # ServiceAccount, ClusterRole, Binding
+│       ├── store-crd.yaml             # Store Custom Resource Definition
+│       ├── platform-namespace.yaml
+│       ├── controller-rbac.yaml       # ServiceAccount + ClusterRole + Binding
 │       ├── controller-deployment.yaml
 │       ├── api-deployment.yaml
 │       ├── api-service.yaml
 │       ├── dashboard-deployment.yaml
 │       ├── dashboard-service.yaml
-│       ├── ingress.yaml
-│       └── platform-namespace.yaml
-├── store-chart/                       # Helm chart for individual stores
+│       └── ingress.yaml
+│
+├── store-chart/                       # Helm chart for per-store resources
 │   ├── Chart.yaml
 │   ├── values.yaml
-│   └── templates/                     # Per-store resources
+│   └── templates/
 │       ├── _helpers.tpl
 │       ├── namespace.yaml             # Store-specific namespace
-│       ├── mariadb-secret.yaml        # Database credentials
+│       ├── mariadb-secret.yaml        # Idempotent password generation
 │       ├── mariadb-pvc.yaml
 │       ├── mariadb-statefulset.yaml
 │       ├── mariadb-service.yaml
-│       ├── wordpress-secret.yaml      # WordPress admin credentials
+│       ├── wordpress-secret.yaml
 │       ├── wordpress-deployment.yaml
 │       ├── wordpress-service.yaml
 │       ├── wordpress-setup-job.yaml   # WooCommerce installation
 │       ├── wordpress-ingress.yaml
-│       ├── resource-quota.yaml        # Resource limits per store
+│       ├── resource-quota.yaml        # CPU/memory/storage limits
 │       ├── limit-range.yaml
-│       └── network-policy.yaml        # Network isolation
+│       └── network-policy.yaml        # Default deny + explicit rules
+│
 ├── backend/                           # Flask API
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── app.py                         # API implementation
-│   └── config.py
-├── controller/                        # kopf-based controller
-│   ├── Dockerfile
+│   ├── app.py                         # REST API endpoints
+│   └── config.py                      # Configuration
+│
+├── controller/                        # kopf-based Kubernetes operator
+│   ├── Dockerfile                     # Includes store-chart baked in
 │   ├── requirements.txt
-│   └── controller.py                  # Operator logic
+│   └── controller.py                  # Operator handlers (@kopf.on.create, etc.)
+│
 ├── frontend/                          # React dashboard
-│   ├── Dockerfile
+│   ├── Dockerfile                     # Multi-stage: build + nginx
+│   ├── nginx.conf                     # SPA routing config
 │   ├── package.json
 │   ├── vite.config.js
 │   ├── index.html
 │   └── src/
-│       ├── App.jsx
 │       ├── main.jsx
-│       ├── api.js                     # API client
+│       ├── App.jsx                    # Main app with auto-refresh
+│       ├── App.css                    # Dark theme styles
+│       ├── index.css
+│       ├── api.js                     # API client (axios)
 │       └── components/
 │           ├── StoreList.jsx
-│           ├── StoreCard.jsx
-│           └── CreateStoreModal.jsx
+│           ├── StoreCard.jsx          # Status badges, delete confirmation
+│           └── CreateStoreModal.jsx   # Form with validation
+│
 └── docs/
-    └── system-design.md               # Detailed architecture
+    └── system-design.md               # Detailed architecture documentation
 ```
 
-### Building Application Images
+## Development & Debugging
+
+### View Logs
 
 ```bash
-# Backend API
-cd backend
-docker build -t store-platform-api:latest .
+# Controller logs (watch store provisioning)
+kubectl logs -n store-platform -l app=store-controller -f
 
-# Controller
-cd controller
-docker build -t store-platform-controller:latest .
+# API logs
+kubectl logs -n store-platform -l app=platform-api -f
 
-# Frontend
-cd frontend
-docker build -t store-platform-dashboard:latest .
+# Dashboard logs
+kubectl logs -n store-platform -l app=platform-dashboard -f
 ```
 
-### Debugging
+### Check Store Status
 
 ```bash
-# Check controller logs
-kubectl logs -n platform deployment/platform-controller -f
+# List all stores
+kubectl get stores -n store-platform
 
-# Check API logs
-kubectl logs -n platform deployment/platform-api -f
-
-# Check store provisioning status
-kubectl describe store <store-name> -n platform
+# Describe a specific store
+kubectl describe store <store-name> -n store-platform
 
 # Check store resources
 kubectl get all -n store-<store-id>
+```
 
-# Debug WordPress setup
+### Debug Store Provisioning
+
+```bash
+# Check WordPress setup job logs
 kubectl logs -n store-<store-id> job/<store-id>-wordpress-setup
 
-# Check NetworkPolicy
-kubectl describe networkpolicy -n store-<store-id>
+# Check WordPress pod
+kubectl logs -n store-<store-id> -l app.kubernetes.io/component=wordpress
 
-# Check ResourceQuota
-kubectl describe resourcequota -n store-<store-id>
+# Check MariaDB pod
+kubectl logs -n store-<store-id> -l app.kubernetes.io/component=mariadb
+
+# Exec into WordPress container
+kubectl exec -it -n store-<store-id> <wordpress-pod-name> -- bash
 ```
 
-### Testing Store Isolation
+### Test API Directly
 
 ```bash
-# Try to access MariaDB from outside namespace (should fail)
-kubectl run -it --rm debug --image=mysql:8.0 --restart=Never -- \
-  mysql -h test-store-mariadb.store-test.svc.cluster.local -u woocommerce -p
+# Health check
+curl http://api.local.store/api/health
 
-# This should timeout due to NetworkPolicy
+# List all stores
+curl http://api.local.store/api/stores
+
+# Get specific store
+curl http://api.local.store/api/stores/<store-id>
+
+# Create store via API
+curl -X POST http://api.local.store/api/stores \
+  -H "Content-Type: application/json" \
+  -d '{"displayName": "My API Store", "storeType": "woocommerce"}'
+
+# Delete store
+curl -X DELETE http://api.local.store/api/stores/<store-id>
 ```
 
-## Production Deployment
+### Rebuild Images
 
-For production deployment on k3s:
+If you make changes to the code:
 
 ```bash
-# Use production values
-helm install platform ./platform-chart \
+# Rebuild specific component
+docker build -t store-platform-api:local ./backend
+kind load docker-image store-platform-api:local --name store-platform
+
+# Restart deployment to use new image
+kubectl rollout restart deployment/platform-api -n store-platform
+
+# Or rebuild all and redeploy
+./setup-cluster.sh  # Will detect existing cluster and offer to recreate
+```
+
+### Test Store Chart Directly
+
+```bash
+# Install store chart directly (bypass controller)
+helm install test-store ./store-chart \
+  --namespace store-test \
+  --create-namespace \
+  --set storeId=test-store \
+  --set storeType=woocommerce \
+  --set baseDomain=local.store \
+  --set displayName="Test Store"
+
+# Watch provisioning
+kubectl get pods -n store-test -w
+
+# Clean up
+helm uninstall test-store -n store-test
+kubectl delete namespace store-test
+```
+
+## Production Deployment (k3s on VPS)
+
+### Prerequisites
+
+1. VPS with Ubuntu 22.04+ (4GB RAM, 2 CPUs minimum)
+2. Domain name with DNS configured
+3. Container registry (Docker Hub, GitHub Container Registry, etc.)
+
+### Steps
+
+#### 1. Install k3s
+
+```bash
+# On your VPS
+curl -sfL https://get.k3s.io | sh -
+
+# Verify
+sudo k3s kubectl get nodes
+```
+
+#### 2. Build and Push Images
+
+```bash
+# On your local machine
+# Set your registry
+REGISTRY="ghcr.io/yourusername"
+
+# Build and tag
+docker build -t ${REGISTRY}/store-platform-api:v1.0.0 ./backend
+docker build -t ${REGISTRY}/store-platform-controller:v1.0.0 ./controller
+docker build -t ${REGISTRY}/store-platform-dashboard:v1.0.0 ./frontend
+
+# Push to registry
+docker push ${REGISTRY}/store-platform-api:v1.0.0
+docker push ${REGISTRY}/store-platform-controller:v1.0.0
+docker push ${REGISTRY}/store-platform-dashboard:v1.0.0
+```
+
+#### 3. Configure values-prod.yaml
+
+Edit `platform-chart/values-prod.yaml`:
+
+```yaml
+baseDomain: yourdomain.com
+api:
+  image:
+    repository: ghcr.io/yourusername/store-platform-api
+    tag: v1.0.0
+# ... update other image repositories and domain references
+```
+
+#### 4. Install Platform
+
+```bash
+# Copy kubeconfig from VPS
+scp root@your-vps:/etc/rancher/k3s/k3s.yaml ~/.kube/k3s-config
+export KUBECONFIG=~/.kube/k3s-config
+
+# Install platform
+helm install store-platform ./platform-chart \
   -f ./platform-chart/values-prod.yaml \
-  --namespace platform \
+  --namespace store-platform \
   --create-namespace
-
-# Update baseDomain in values-prod.yaml to your actual domain
-# Configure external DNS for wildcard subdomain (*.yourdomain.com)
-# Set up TLS certificates via cert-manager (optional)
 ```
 
-## Store Lifecycle
+#### 5. Configure DNS
 
-1. **Create**: User submits store request via Dashboard/API
-2. **Provision**: Controller creates namespace, installs Helm chart
-3. **Install**: WordPress setup Job installs WooCommerce, creates sample products
-4. **Ready**: Store is accessible via ingress, status updated
-5. **Monitor**: Controller periodically checks store health
-6. **Delete**: User deletes store, controller runs cleanup
+Add wildcard DNS records:
 
-## Security Features
+```
+A    dashboard.yourdomain.com    <VPS-IP>
+A    api.yourdomain.com          <VPS-IP>
+A    *.yourdomain.com            <VPS-IP>
+```
 
-- **Namespace Isolation**: Each store in separate namespace
-- **NetworkPolicy**: Default deny, explicit allow rules
-- **ResourceQuota**: Prevent resource exhaustion
-- **Secrets Management**: Passwords generated securely
-- **RBAC**: Controller has minimum necessary permissions
+#### 6. (Optional) Set Up TLS with cert-manager
 
-## Resource Limits Per Store
+```bash
+# Install cert-manager
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
 
-- **Pods**: Max 4
-- **CPU Requests**: 1 core total, max 2 cores
-- **Memory Requests**: 2Gi total, max 3Gi
-- **Storage**: 5Gi total
+# Create ClusterIssuer
+kubectl apply -f - <<EOF
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: your-email@example.com
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+EOF
 
-Default per container:
-- **WordPress**: 256Mi RAM, 200m CPU (limits: 512Mi, 500m)
-- **MariaDB**: 128Mi RAM, 100m CPU (limits: 512Mi, 500m)
+# Update values-prod.yaml to enable cert-manager annotations
+# Then upgrade the release
+helm upgrade store-platform ./platform-chart -f ./platform-chart/values-prod.yaml
+```
+
+## Cleanup
+
+### Delete Everything
+
+```bash
+# Run teardown script
+./teardown.sh
+```
+
+This will:
+- Uninstall platform Helm release
+- Delete all store namespaces
+- Delete platform namespace
+- Delete Kind cluster
+
+### Selective Cleanup
+
+```bash
+# Delete only stores (keep platform running)
+kubectl delete stores --all -n store-platform
+
+# Delete specific store
+kubectl delete store <store-name> -n store-platform
+
+# Uninstall platform but keep cluster
+helm uninstall store-platform -n store-platform
+```
 
 ## Troubleshooting
 
+### Setup script fails
+
+```bash
+# Check Docker is running
+docker ps
+
+# Check Kind cluster
+kind get clusters
+
+# Check kubectl context
+kubectl config current-context
+```
+
+### Platform pods not starting
+
+```bash
+# Check events
+kubectl get events -n store-platform --sort-by='.lastTimestamp'
+
+# Check pod status
+kubectl describe pod <pod-name> -n store-platform
+
+# Check if images are loaded
+docker images | grep store-platform
+```
+
 ### Store stuck in "Provisioning"
+
 ```bash
-kubectl describe store <name> -n platform
-kubectl logs -n platform deployment/platform-controller
+# Check controller logs
+kubectl logs -n store-platform -l app=store-controller --tail=100
+
+# Check Store status
+kubectl describe store <store-name> -n store-platform
+
+# Check if Helm release exists
+helm list -A | grep <store-id>
 ```
 
-### WordPress not accessible
+### Cannot access store URL
+
 ```bash
-kubectl get ingress -n store-<id>
-kubectl get pods -n store-<id>
-kubectl logs -n store-<id> <wordpress-pod-name>
+# Check ingress
+kubectl get ingress -n store-<store-id>
+kubectl describe ingress <store-id>-wordpress -n store-<store-id>
+
+# Check DNS resolution
+ping <store-id>.local.store
+
+# Check NGINX ingress controller
+kubectl get pods -n ingress-nginx
+kubectl logs -n ingress-nginx <ingress-controller-pod>
 ```
 
-### Setup Job failed
+### WordPress setup job fails
+
 ```bash
-kubectl logs -n store-<id> job/<store-id>-wordpress-setup
-kubectl describe job -n store-<id>
+# Check job status
+kubectl get jobs -n store-<store-id>
+
+# Check job logs
+kubectl logs -n store-<store-id> job/<store-id>-wordpress-setup
+
+# Common issues:
+# - WordPress not responding: Wait longer, WordPress takes time to start
+# - Database connection: Check MariaDB pod status
+# - WP-CLI errors: Check WordPress pod logs
 ```
 
-### Database connection issues
-```bash
-kubectl logs -n store-<id> <wordpress-pod-name>
-kubectl exec -n store-<id> <mariadb-pod-name> -- mysqladmin ping
+## Architecture Decisions
+
+See [docs/system-design.md](docs/system-design.md) for comprehensive documentation on:
+
+- Detailed component architecture
+- Idempotency guarantees (Helm lookup, controller resume logic)
+- Failure handling and recovery
+- Security model (RBAC, NetworkPolicy, resource limits)
+- Scaling considerations
+- Local vs production differences
+- Abuse prevention mechanisms
+
+## Resource Limits
+
+### Per Store
+- **Pods**: Maximum 4
+- **CPU**: 1 core requested, 2 cores limit
+- **Memory**: 2Gi requested, 3Gi limit
+- **Storage**: 5Gi total
+
+### Default Container Limits
+- **WordPress**: 256Mi/200m CPU (limit: 512Mi/500m)
+- **MariaDB**: 128Mi/100m CPU (limit: 512Mi/500m)
+
+### Platform Components
+- **API**: 128Mi/100m CPU (limit: 512Mi/500m)
+- **Dashboard**: 64Mi/50m CPU (limit: 256Mi/200m)
+- **Controller**: 256Mi/200m CPU (limit: 1Gi/1000m)
+
+## API Reference
+
+### Endpoints
+
+```
+GET    /api/health              Health check
+GET    /api/stores              List all stores
+GET    /api/stores/<id>         Get specific store
+POST   /api/stores              Create new store
+DELETE /api/stores/<id>         Delete store
 ```
 
-## Next Steps
+### Create Store Request
 
-1. Implement Flask API in `backend/app.py`
-2. Implement kopf controller in `controller/controller.py`
-3. Implement React dashboard in `frontend/src/`
-4. Build and push Docker images
-5. Test end-to-end store creation flow
-6. Configure production k3s cluster
-7. Set up CI/CD pipeline
-8. Add monitoring and alerting
+```json
+POST /api/stores
+{
+  "displayName": "My Store",
+  "storeType": "woocommerce"
+}
+```
+
+Response (201):
+```json
+{
+  "id": "my-store-abc123",
+  "displayName": "My Store",
+  "storeType": "woocommerce",
+  "phase": "Provisioning",
+  "url": null,
+  "adminUrl": null,
+  "createdAt": "2024-01-15T10:30:00Z",
+  "readyAt": null,
+  "events": []
+}
+```
+
+## Demo Video Checklist
+
+✅ Show dashboard dark theme
+✅ Create store from UI
+✅ Watch status change from Provisioning → Installing → Configuring → Ready
+✅ Click store URL and show WooCommerce storefront
+✅ Log into WordPress admin
+✅ Show sample product
+✅ Place test order
+✅ Delete store and show cleanup
 
 ## License
 
 MIT
 
-## Contributing
+## Author
 
-This is an internship assignment project. See `docs/system-design.md` for detailed architecture and design decisions.
+Built for the Urumi AI SDE Internship Assignment.
+
+For detailed architecture and design decisions, see [docs/system-design.md](docs/system-design.md).
