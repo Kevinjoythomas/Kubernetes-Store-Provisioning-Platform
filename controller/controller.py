@@ -9,7 +9,7 @@ import logging
 import os
 import re
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, Union
 
 from kubernetes_asyncio import client, config
 from kubernetes_asyncio.client.rest import ApiException
@@ -265,14 +265,14 @@ async def check_deployment_ready(deployment_name: str, namespace: str) -> bool:
         return False
 
 
-async def check_job_completed(job_name: str, namespace: str) -> Tuple[bool, bool]:
+async def check_job_completed(job_name: str, namespace: str) -> Tuple[bool, Optional[bool]]:
     """
     Check if a Job has completed successfully.
 
     Returns:
         tuple: (exists, succeeded)
             - exists: True if job exists, False otherwise
-            - succeeded: True if job completed successfully, False if failed or still running
+            - succeeded: True if completed successfully, False if failed, None if still running
     """
     try:
         async with client.ApiClient() as api_client:
@@ -292,18 +292,18 @@ async def check_job_completed(job_name: str, namespace: str) -> Tuple[bool, bool
                 return True, False
 
             logger.debug(f"Job '{job_name}' still running")
-            return True, False
+            return True, None
 
     except ApiException as e:
         if e.status == 404:
             logger.debug(f"Job '{job_name}' not found yet in namespace '{namespace}'")
-            return False, False
+            return False, None
         else:
             logger.warning(f"Error checking job: {e}")
-            return False, False
+            return False, None
     except Exception as e:
         logger.warning(f"Exception checking job: {e}")
-        return False, False
+        return False, None
 
 
 async def poll_for_deployment_ready(deployment_name: str, namespace: str, timeout: int) -> bool:
@@ -343,14 +343,15 @@ async def poll_for_job_completion(job_name: str, namespace: str, timeout: int) -
     while True:
         exists, succeeded = await check_job_completed(job_name, namespace)
 
-        if exists and succeeded:
+        if exists and succeeded is True:
             return True
 
-        if exists and not succeeded:
-            # Job exists but failed
+        if exists and succeeded is False:
+            # Job exists and actually failed (not just still running)
             logger.error(f"Job '{job_name}' failed")
             return False
 
+        # succeeded is None means still running or not found yet
         elapsed = asyncio.get_event_loop().time() - start_time
         if elapsed >= timeout:
             logger.error(f"Timeout waiting for job '{job_name}' to complete")

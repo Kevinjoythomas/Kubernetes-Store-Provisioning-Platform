@@ -64,6 +64,15 @@ spec:
           - |
             set -e
 
+            # Increase PHP memory limit for WP-CLI (core download + extraction needs >128M)
+            mkdir -p /tmp/bin
+            cat > /tmp/bin/wp << 'WRAPPER'
+            #!/bin/sh
+            exec php -d memory_limit=512M /usr/local/bin/wp "$@"
+            WRAPPER
+            chmod +x /tmp/bin/wp
+            export PATH="/tmp/bin:$PATH"
+
             echo "========================================="
             echo "WordPress + WooCommerce Setup"
             echo "========================================="
@@ -206,6 +215,9 @@ spec:
             echo ""
             echo "All setup tasks completed successfully!"
         env:
+        # Increase PHP memory limit for WP-CLI (core download + extraction needs >128M)
+        - name: WP_CLI_PHP_ARGS
+          value: "-d memory_limit=512M"
         # WordPress database connection
         - name: WORDPRESS_DB_HOST
           value: {{ include "store.fullname" . }}-mariadb:3306
