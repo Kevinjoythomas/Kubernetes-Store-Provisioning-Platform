@@ -5,6 +5,18 @@
 baseDomain: local.store
 platformNamespace: store-platform
 
+# Namespace (we use --create-namespace in helm install, so don't create via template)
+namespace:
+  create: false
+
+# Store CRD (installed by the chart)
+storeCRD:
+  create: true
+
+# Controller RBAC
+rbac:
+  create: true
+
 # API
 api:
   enabled: true

@@ -14,7 +14,7 @@ class Config:
     SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 
     # Kubernetes configuration
-    PLATFORM_NAMESPACE = os.getenv('PLATFORM_NAMESPACE', 'platform')
+    PLATFORM_NAMESPACE = os.getenv('PLATFORM_NAMESPACE', 'store-platform')
     K8S_IN_CLUSTER = os.getenv('K8S_IN_CLUSTER', 'true').lower() == 'true'
 
     # Store CRD configuration

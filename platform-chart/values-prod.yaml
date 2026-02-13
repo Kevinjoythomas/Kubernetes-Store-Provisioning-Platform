@@ -114,13 +114,13 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
-          service: platform-api
+          service: api
           port: 5000
     - host: dashboard.yourdomain.com  # CHANGE THIS
       paths:
         - path: /
           pathType: Prefix
-          service: platform-dashboard
+          service: dashboard
           port: 80
 
   # TLS configuration

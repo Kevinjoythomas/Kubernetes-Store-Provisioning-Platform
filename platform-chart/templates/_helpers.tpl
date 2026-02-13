@@ -29,6 +29,13 @@ Create chart name and version as used by the chart label.
 {{- end }}
 
 {{/*
+Platform namespace
+*/}}
+{{- define "platform.namespace" -}}
+{{- .Values.platformNamespace | default .Release.Namespace }}
+{{- end }}
+
+{{/*
 Common labels
 */}}
 {{- define "platform.labels" -}}
@@ -106,11 +113,4 @@ Create the name of the controller service account to use
 {{- else }}
 {{- default "default" .Values.controller.serviceAccount.name }}
 {{- end }}
-{{- end }}
-
-{{/*
-Namespace name
-*/}}
-{{- define "platform.namespace" -}}
-{{- .Values.namespace.name | default .Release.Namespace }}
 {{- end }}

@@ -10,7 +10,8 @@
       "Bash(curl:*)",
       "Bash(kubectl delete:*)",
       "Read(//workspaces/urumi/**)",
-      "Bash(xargs -r kubectl delete ns:*)"
+      "Bash(xargs -r kubectl delete ns:*)",
+      "Bash(where:*)"
     ]
   }
 }

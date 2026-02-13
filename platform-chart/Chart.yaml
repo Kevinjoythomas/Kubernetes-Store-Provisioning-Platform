@@ -1,6 +1,6 @@
 apiVersion: v2
-name: platform
-description: Helm chart for Store Provisioning Platform - API, Dashboard, and Controller
+name: store-platform
+description: Platform chart for store provisioning system (API, Dashboard, Controller)
 type: application
 version: 0.1.0
 appVersion: "1.0"

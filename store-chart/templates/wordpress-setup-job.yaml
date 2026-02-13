@@ -1,6 +1,9 @@
 {{- /*
 WordPress Setup Job
-Installs WordPress core, WooCommerce plugin, creates sample products, and configures payment gateways.
+Downloads WordPress core, connects to the shared MariaDB, and runs WP-CLI to:
+  - Install WordPress core (writes to DATABASE, shared with WP deployment)
+  - Install & activate WooCommerce plugin
+  - Configure store settings and create sample products
 This Job is idempotent - it can be run multiple times safely.
 */ -}}
 apiVersion: batch/v1
@@ -24,7 +27,20 @@ spec:
     spec:
       restartPolicy: OnFailure
       initContainers:
-      # Wait for WordPress service to be available
+      # Wait for MariaDB to be ready (the setup job connects to DB directly)
+      - name: wait-for-mariadb
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for MariaDB to be available..."
+          until nc -z {{ include "store.fullname" . }}-mariadb 3306; do
+            echo "MariaDB not ready yet, waiting..."
+            sleep 5
+          done
+          echo "MariaDB is available!"
+      # Also wait for WordPress service (ensures WP has started and created tables)
       - name: wait-for-wordpress
         image: busybox:1.36
         command:
@@ -37,6 +53,8 @@ spec:
             sleep 5
           done
           echo "WordPress service is available!"
+          # Give WordPress extra time to finish its first-boot setup
+          sleep 15
       containers:
       - name: wp-cli
         image: "{{ .Values.wordpressSetup.image.repository }}:{{ .Values.wordpressSetup.image.tag }}"
@@ -53,21 +71,41 @@ spec:
             echo "Store URL: http://{{ include "store.hostname" . }}"
             echo ""
 
-            # Set WordPress path
             WP_PATH="/var/www/html"
 
-            # Wait for WordPress to be responsive and database to be ready
-            echo "Waiting for WordPress to be ready..."
-            MAX_ATTEMPTS=60
+            # Step 1: Download WordPress core files into the emptyDir
+            # WP-CLI needs local core files to bootstrap, but all install
+            # operations write to the DATABASE which is shared with the
+            # main WordPress deployment.
+            echo "Downloading WordPress core files..."
+            wp core download --path=${WP_PATH} --allow-root --quiet
+            echo "WordPress core files downloaded"
+
+            # Step 2: Create wp-config.php pointing to the shared MariaDB
+            echo "Creating wp-config.php..."
+            wp config create \
+              --dbhost="${WORDPRESS_DB_HOST}" \
+              --dbname="${WORDPRESS_DB_NAME}" \
+              --dbuser="${WORDPRESS_DB_USER}" \
+              --dbpass="${WORDPRESS_DB_PASSWORD}" \
+              --path=${WP_PATH} \
+              --allow-root \
+              --skip-check \
+              --force
+            echo "wp-config.php created"
+
+            # Step 3: Install WordPress core (writes to DATABASE)
+            echo "Installing WordPress core..."
+            MAX_ATTEMPTS=30
             ATTEMPT=0
 
             until wp core is-installed --path=${WP_PATH} --allow-root 2>/dev/null; do
               ATTEMPT=$((ATTEMPT + 1))
               if [ ${ATTEMPT} -ge ${MAX_ATTEMPTS} ]; then
-                echo "❌ WordPress did not become ready in time. Attempting core install..."
+                echo "WordPress not installed after ${MAX_ATTEMPTS} attempts, forcing install..."
+                break
               fi
 
-              # Try to install WordPress core
               wp core install \
                 --url="http://{{ include "store.hostname" . }}" \
                 --title="{{ .Values.displayName | default .Values.storeId }}" \
@@ -76,61 +114,53 @@ spec:
                 --admin_email="${WP_ADMIN_EMAIL}" \
                 --skip-email \
                 --path=${WP_PATH} \
-                --allow-root 2>/dev/null || true
+                --allow-root 2>/dev/null && break
 
               sleep 5
             done
 
-            echo "✅ WordPress is installed and ready!"
+            echo "WordPress is installed and ready!"
             echo ""
 
-            # Check if WooCommerce is already installed
+            # Step 4: Install WooCommerce plugin
             if wp plugin is-installed woocommerce --path=${WP_PATH} --allow-root 2>/dev/null; then
-              echo "✅ WooCommerce is already installed"
-
-              # Make sure it's activated
+              echo "WooCommerce is already installed"
               if ! wp plugin is-active woocommerce --path=${WP_PATH} --allow-root 2>/dev/null; then
                 echo "Activating WooCommerce..."
                 wp plugin activate woocommerce --path=${WP_PATH} --allow-root
               fi
             else
-              echo "📦 Installing WooCommerce plugin..."
+              echo "Installing WooCommerce plugin..."
               wp plugin install woocommerce --activate --path=${WP_PATH} --allow-root
-              echo "✅ WooCommerce installed and activated"
+              echo "WooCommerce installed and activated"
             fi
 
             echo ""
 
-            # Configure WooCommerce basic settings
-            echo "⚙️  Configuring WooCommerce settings..."
+            # Step 5: Configure WooCommerce settings
+            echo "Configuring WooCommerce settings..."
 
-            # Set store address
             wp option update woocommerce_store_address "123 Store Street" --path=${WP_PATH} --allow-root 2>/dev/null || true
             wp option update woocommerce_store_address_2 "" --path=${WP_PATH} --allow-root 2>/dev/null || true
             wp option update woocommerce_store_city "Store City" --path=${WP_PATH} --allow-root 2>/dev/null || true
             wp option update woocommerce_default_country "US:CA" --path=${WP_PATH} --allow-root 2>/dev/null || true
             wp option update woocommerce_store_postcode "90210" --path=${WP_PATH} --allow-root 2>/dev/null || true
-
-            # Set currency
             wp option update woocommerce_currency "USD" --path=${WP_PATH} --allow-root 2>/dev/null || true
-
-            # Enable tax calculations (but don't add tax rates)
             wp option update woocommerce_calc_taxes "no" --path=${WP_PATH} --allow-root 2>/dev/null || true
 
-            echo "✅ WooCommerce settings configured"
+            echo "WooCommerce settings configured"
             echo ""
 
-            # Enable Cash on Delivery payment gateway
-            echo "💳 Enabling Cash on Delivery payment gateway..."
+            # Step 6: Enable Cash on Delivery payment gateway
+            echo "Enabling Cash on Delivery payment gateway..."
             wp wc payment_gateway update cod --enabled=true --user=${WP_ADMIN_USERNAME} --path=${WP_PATH} --allow-root 2>/dev/null || true
-            echo "✅ Cash on Delivery payment gateway enabled"
+            echo "Cash on Delivery payment gateway enabled"
             echo ""
 
-            # Create sample products
-            echo "🛍️  Creating sample products..."
+            # Step 7: Create sample products
+            echo "Creating sample products..."
 
             {{- range .Values.wordpressSetup.sampleProducts }}
-            # Check if product already exists by name
             PRODUCT_ID=$(wp post list --post_type=product --title="{{ .name }}" --format=ids --path=${WP_PATH} --allow-root 2>/dev/null | tr -d '\n')
 
             if [ -z "${PRODUCT_ID}" ]; then
@@ -143,23 +173,23 @@ spec:
                 --status=publish \
                 --user=${WP_ADMIN_USERNAME} \
                 --path=${WP_PATH} \
-                --allow-root 2>/dev/null || echo "⚠️  Warning: Could not create product {{ .name }}"
+                --allow-root 2>/dev/null || echo "Warning: Could not create product {{ .name }}"
             else
-              echo "✅ Product '{{ .name }}' already exists (ID: ${PRODUCT_ID})"
+              echo "Product '{{ .name }}' already exists (ID: ${PRODUCT_ID})"
             fi
             {{- end }}
 
-            echo "✅ Sample products created"
+            echo "Sample products created"
             echo ""
 
-            # Set permalinks to a friendly structure
-            echo "🔗 Setting permalink structure..."
+            # Step 8: Set permalink structure
+            echo "Setting permalink structure..."
             wp rewrite structure '/%postname%/' --path=${WP_PATH} --allow-root 2>/dev/null || true
             wp rewrite flush --path=${WP_PATH} --allow-root 2>/dev/null || true
-            echo "✅ Permalink structure set"
+            echo "Permalink structure set"
             echo ""
 
-            # Display WooCommerce status
+            # Summary
             echo "========================================="
             echo "Setup Complete!"
             echo "========================================="
@@ -174,10 +204,7 @@ spec:
             echo "Installed Plugins:"
             wp plugin list --path=${WP_PATH} --allow-root 2>/dev/null || true
             echo ""
-            echo "Payment Gateways:"
-            wp wc payment_gateway list --user=${WP_ADMIN_USERNAME} --path=${WP_PATH} --allow-root 2>/dev/null || true
-            echo ""
-            echo "✅ All setup tasks completed successfully!"
+            echo "All setup tasks completed successfully!"
         env:
         # WordPress database connection
         - name: WORDPRESS_DB_HOST
@@ -214,12 +241,11 @@ spec:
               name: {{ include "store.fullname" . }}-wordpress
               key: admin-email
         volumeMounts:
-        # Mount the same WordPress files as the WordPress deployment
-        # This allows WP-CLI to access the WordPress installation
         - name: wordpress-data
           mountPath: /var/www/html
       volumes:
-      # Use emptyDir - we connect to WordPress via the service network
-      # WP-CLI commands will install WordPress through the database connection
+      # emptyDir for WP-CLI to download core files into.
+      # All install operations write to the shared DATABASE,
+      # so the main WordPress deployment picks them up.
       - name: wordpress-data
         emptyDir: {}

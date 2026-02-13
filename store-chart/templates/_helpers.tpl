@@ -85,17 +85,6 @@ app.kubernetes.io/component: wordpress
 {{- end }}
 
 {{/*
-Create the name of the service account to use
-*/}}
-{{- define "store.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "store.fullname" .) .Values.serviceAccount.name }}
-{{- else }}
-{{- default "default" .Values.serviceAccount.name }}
-{{- end }}
-{{- end }}
-
-{{/*
 Namespace name for this store
 */}}
 {{- define "store.namespace" -}}

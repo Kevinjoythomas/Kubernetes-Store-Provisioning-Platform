@@ -1,4 +1,6 @@
 # Controller Dockerfile
+# Build context: controller/ directory
+# NOTE: setup-cluster.sh copies store-chart/ into controller/ before building
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -20,21 +22,21 @@ RUN apt-get update && apt-get install -y \
 RUN helm version --short && kubectl version --client
 
 # Copy requirements and install Python dependencies
-COPY controller/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY controller/controller.py .
+COPY controller.py .
 
-# Copy the store-chart into the image
+# Copy the store-chart into the image (copied by setup-cluster.sh before build)
 # This allows the controller to run helm install without external dependencies
-COPY store-chart /charts/store-chart
+COPY store-chart/ /charts/store-chart/
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV STORE_CHART_PATH=/charts/store-chart
 ENV BASE_DOMAIN=local.store
-ENV PLATFORM_NAMESPACE=platform
+ENV PLATFORM_NAMESPACE=store-platform
 
 # Run the kopf operator
 CMD ["kopf", "run", "--standalone", "--verbose", "/app/controller.py"]

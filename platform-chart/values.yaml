@@ -1,9 +1,30 @@
-# Default values for platform chart
+# Default values for store-platform chart
 # This chart deploys the Store Provisioning Platform components
 
-# Platform namespace
+# Global settings
+global:
+  imagePullSecrets: []
+
+# Naming overrides
+nameOverride: ""
+fullnameOverride: ""
+
+# Base domain for store ingress URLs
+baseDomain: "local.store"
+
+# Platform namespace (where platform components are deployed)
+platformNamespace: "store-platform"
+
+# Namespace creation
 namespace:
-  name: platform
+  create: true
+
+# Store CRD
+storeCRD:
+  create: true
+
+# Controller RBAC
+rbac:
   create: true
 
 # API (Flask backend)
@@ -21,7 +42,6 @@ api:
     port: 5000
     targetPort: 5000
 
-  # ServiceAccount for RBAC
   serviceAccount:
     create: true
     name: store-api
@@ -34,12 +54,17 @@ api:
       memory: "512Mi"
       cpu: "500m"
 
-  # Environment variables
   env:
     - name: FLASK_ENV
       value: "production"
     - name: FLASK_APP
       value: "app.py"
+    - name: PLATFORM_NAMESPACE
+      value: "store-platform"
+    - name: K8S_IN_CLUSTER
+      value: "true"
+    - name: BASE_DOMAIN
+      value: "local.store"
 
 # Dashboard (React frontend)
 dashboard:
@@ -64,7 +89,6 @@ dashboard:
       memory: "256Mi"
       cpu: "200m"
 
-  # Environment variables
   env:
     - name: REACT_APP_API_URL
       value: "http://api.local.store"
@@ -87,17 +111,17 @@ controller:
       memory: "512Mi"
       cpu: "500m"
 
-  # ServiceAccount for RBAC
   serviceAccount:
     create: true
     name: store-controller
 
-  # Environment variables
   env:
     - name: STORE_CHART_PATH
       value: "/charts/store-chart"
     - name: BASE_DOMAIN
       value: "local.store"
+    - name: PLATFORM_NAMESPACE
+      value: "store-platform"
 
 # Ingress configuration
 ingress:
@@ -111,34 +135,17 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
-          service: platform-api
+          service: api
           port: 5000
     - host: dashboard.local.store
       paths:
         - path: /
           pathType: Prefix
-          service: platform-dashboard
+          service: dashboard
           port: 80
 
-  tls:
-    enabled: false
-    # - secretName: platform-tls
-    #   hosts:
-    #     - api.local.store
-    #     - dashboard.local.store
-
-# Store CRD
-storeCRD:
-  create: true
-
-# Controller RBAC
-rbac:
-  create: true
-
-# Global settings
-global:
-  imagePullSecrets: []
-
-# Naming overrides
-nameOverride: ""
-fullnameOverride: ""
+  tls: []
+  # - secretName: platform-tls
+  #   hosts:
+  #     - api.local.store
+  #     - dashboard.local.store

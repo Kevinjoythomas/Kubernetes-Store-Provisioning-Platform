@@ -22,7 +22,7 @@ EXPOSE 5000
 ENV FLASK_APP=app.py
 ENV PYTHONUNBUFFERED=1
 ENV K8S_IN_CLUSTER=true
-ENV PLATFORM_NAMESPACE=platform
+ENV PLATFORM_NAMESPACE=store-platform
 ENV BASE_DOMAIN=local.store
 
 # Run with gunicorn for production
