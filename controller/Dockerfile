@@ -20,15 +20,15 @@ RUN apt-get update && apt-get install -y \
 RUN helm version --short && kubectl version --client
 
 # Copy requirements and install Python dependencies
-COPY requirements.txt .
+COPY controller/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY controller.py .
+COPY controller/controller.py .
 
 # Copy the store-chart into the image
 # This allows the controller to run helm install without external dependencies
-COPY ../store-chart /charts/store-chart
+COPY store-chart /charts/store-chart
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

@@ -21,6 +21,11 @@ api:
     port: 5000
     targetPort: 5000
 
+  # ServiceAccount for RBAC
+  serviceAccount:
+    create: true
+    name: store-api
+
   resources:
     requests:
       memory: "256Mi"

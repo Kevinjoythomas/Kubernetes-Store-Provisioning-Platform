@@ -7,12 +7,23 @@ platformNamespace: store-platform
 
 # API
 api:
+  enabled: true
+  replicaCount: 1
+
   image:
     repository: store-platform-api
     tag: local
     pullPolicy: Never  # Use local images loaded into Kind, don't pull from registry
 
-  replicas: 1
+  service:
+    type: ClusterIP
+    port: 5000
+    targetPort: 5000
+
+  # Service account for API (needs RBAC permissions to access Store CRDs)
+  serviceAccount:
+    create: true
+    name: store-api
 
   env:
     - name: PLATFORM_NAMESPACE
@@ -38,12 +49,18 @@ api:
 
 # Dashboard
 dashboard:
+  enabled: true
+  replicaCount: 1
+
   image:
     repository: store-platform-dashboard
     tag: local
     pullPolicy: Never  # Use local images loaded into Kind, don't pull from registry
 
-  replicas: 1
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
 
   resources:
     requests:
@@ -55,12 +72,13 @@ dashboard:
 
 # Controller
 controller:
+  enabled: true
+  replicaCount: 1
+
   image:
     repository: store-platform-controller
     tag: local
     pullPolicy: Never  # Use local images loaded into Kind, don't pull from registry
-
-  replicas: 1
 
   env:
     - name: STORE_CHART_PATH
@@ -98,13 +116,13 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
-          service: platform-api
+          service: api
           port: 5000
     - host: dashboard.local.store
       paths:
         - path: /
           pathType: Prefix
-          service: platform-dashboard
+          service: dashboard
           port: 80
 
   tls: []  # No TLS for local development

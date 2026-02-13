@@ -16,6 +16,9 @@ spec:
       labels:
         {{- include "platform.api.selectorLabels" . | nindent 8 }}
     spec:
+      {{- if .Values.api.serviceAccount.create }}
+      serviceAccountName: {{ .Values.api.serviceAccount.name | default "store-api" }}
+      {{- end }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -37,13 +40,13 @@ spec:
           {{- toYaml .Values.api.resources | nindent 10 }}
         livenessProbe:
           httpGet:
-            path: /health
+            path: /api/health
             port: http
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /health
+            path: /api/health
             port: http
           initialDelaySeconds: 10
           periodSeconds: 5

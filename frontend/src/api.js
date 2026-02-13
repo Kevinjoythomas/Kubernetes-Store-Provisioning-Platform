@@ -4,8 +4,9 @@
 
 import axios from 'axios'
 
-// API base URL - defaults to localhost for development
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://api.local.store'
+// API base URL - use empty string for relative URLs (proxied by nginx)
+// This allows the dashboard to work in any environment without CORS issues
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
 // Create axios instance with default config
 const apiClient = axios.create({

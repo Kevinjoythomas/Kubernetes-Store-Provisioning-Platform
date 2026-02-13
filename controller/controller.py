@@ -170,7 +170,6 @@ async def helm_install(
             release_name,
             chart_path,
             '--namespace', namespace,
-            '--create-namespace',
             '--wait',
             '--timeout', f'{HELM_INSTALL_TIMEOUT}s'
         ]
@@ -360,6 +359,47 @@ async def poll_for_job_completion(job_name: str, namespace: str, timeout: int) -
         await asyncio.sleep(POLL_INTERVAL)
 
 
+async def create_namespace(namespace: str, release_name: str) -> bool:
+    """
+    Create a namespace with Helm-compatible labels/annotations if it doesn't exist.
+    Returns True if created or already exists, False on error.
+    """
+    try:
+        async with client.ApiClient() as api_client:
+            core_v1 = client.CoreV1Api(api_client)
+
+            # Check if namespace exists
+            try:
+                await core_v1.read_namespace(name=namespace)
+                logger.info(f"Namespace '{namespace}' already exists")
+                return True
+            except ApiException as e:
+                if e.status != 404:
+                    raise
+
+            # Create namespace with Helm-compatible metadata
+            ns_body = client.V1Namespace(
+                metadata=client.V1ObjectMeta(
+                    name=namespace,
+                    labels={
+                        'platform.urumi.io/managed': 'true',
+                        'name': namespace,
+                        'app.kubernetes.io/managed-by': 'Helm'
+                    },
+                    annotations={
+                        'meta.helm.sh/release-name': release_name,
+                        'meta.helm.sh/release-namespace': namespace
+                    }
+                )
+            )
+            await core_v1.create_namespace(body=ns_body)
+            logger.info(f"Namespace '{namespace}' created with Helm metadata")
+            return True
+    except Exception as e:
+        logger.error(f"Error creating namespace: {e}")
+        return False
+
+
 async def delete_namespace(namespace: str) -> bool:
     """
     Delete a Kubernetes namespace.
@@ -504,7 +544,7 @@ async def create_store(spec, name, namespace, patch, logger, **kwargs):
             message=f'Starting provisioning of store {store_id}'
         )
 
-        patch.status = build_status_update(
+        patch['status'] = build_status_update(
             phase='Provisioning',
             message=f'Starting provisioning of store {store_id}',
             created_at=created_at
@@ -514,6 +554,24 @@ async def create_store(spec, name, namespace, patch, logger, **kwargs):
         release_exists = await check_helm_release_exists(release_name, store_namespace)
 
         if not release_exists:
+            # Create namespace first
+            logger.info(f"[{name}] Creating namespace: {store_namespace}")
+            ns_created = await create_namespace(store_namespace, release_name)
+            if not ns_created:
+                error_msg = f"Failed to create namespace {store_namespace}"
+                logger.error(f"[{name}] {error_msg}")
+                kopf.exception(
+                    spec,
+                    reason='NamespaceCreationFailed',
+                    message=error_msg
+                )
+                patch['status'] = build_status_update(
+                    phase='Failed',
+                    message=error_msg,
+                    created_at=created_at
+                )
+                return
+
             # Run helm install
             logger.info(f"[{name}] Installing Helm chart")
 
@@ -533,13 +591,13 @@ async def create_store(spec, name, namespace, patch, logger, **kwargs):
 
             if not success:
                 logger.error(f"[{name}] Helm install failed: {error_msg}")
-                kopf.error(
+                kopf.exception(
                     spec,
                     reason='ProvisioningFailed',
                     message=f'Helm install failed: {error_msg}'
                 )
 
-                patch.status = build_status_update(
+                patch['status'] = build_status_update(
                     phase='Failed',
                     message=f'Helm install failed: {error_msg}',
                     created_at=created_at
@@ -558,7 +616,7 @@ async def create_store(spec, name, namespace, patch, logger, **kwargs):
             message='Helm chart installed, waiting for pods'
         )
 
-        patch.status = build_status_update(
+        patch['status'] = build_status_update(
             phase='Installing',
             message='Helm chart installed, waiting for pods',
             created_at=created_at
@@ -577,13 +635,13 @@ async def create_store(spec, name, namespace, patch, logger, **kwargs):
         if not deployment_ready:
             error_msg = f"WordPress deployment did not become ready within {DEPLOYMENT_READY_TIMEOUT}s"
             logger.error(f"[{name}] {error_msg}")
-            kopf.error(
+            kopf.exception(
                 spec,
                 reason='DeploymentTimeout',
                 message=error_msg
             )
 
-            patch.status = build_status_update(
+            patch['status'] = build_status_update(
                 phase='Failed',
                 message=error_msg,
                 created_at=created_at
@@ -600,7 +658,7 @@ async def create_store(spec, name, namespace, patch, logger, **kwargs):
             message='WordPress is running, waiting for setup job'
         )
 
-        patch.status = build_status_update(
+        patch['status'] = build_status_update(
             phase='Configuring',
             message='WordPress is running, waiting for setup job',
             created_at=created_at
@@ -619,13 +677,13 @@ async def create_store(spec, name, namespace, patch, logger, **kwargs):
         if not job_completed:
             error_msg = f"WordPress setup job did not complete successfully within {JOB_COMPLETION_TIMEOUT}s"
             logger.error(f"[{name}] {error_msg}")
-            kopf.error(
+            kopf.exception(
                 spec,
                 reason='SetupJobFailed',
                 message=error_msg
             )
 
-            patch.status = build_status_update(
+            patch['status'] = build_status_update(
                 phase='Failed',
                 message=error_msg,
                 created_at=created_at
@@ -647,7 +705,7 @@ async def create_store(spec, name, namespace, patch, logger, **kwargs):
             message=f'Store is ready at {store_url}'
         )
 
-        patch.status = build_status_update(
+        patch['status'] = build_status_update(
             phase='Ready',
             url=store_url,
             admin_url=admin_url,
@@ -665,13 +723,13 @@ async def create_store(spec, name, namespace, patch, logger, **kwargs):
         logger.error(f"[{name}] {error_msg}")
         logger.exception(e)
 
-        kopf.error(
+        kopf.exception(
             spec,
             reason='UnexpectedError',
             message=error_msg
         )
 
-        patch.status = build_status_update(
+        patch['status'] = build_status_update(
             phase='Failed',
             message=error_msg,
             created_at=created_at
@@ -723,7 +781,7 @@ async def delete_store(spec, name, namespace, status, logger, **kwargs):
         logger.error(f"[{name}] {error_msg}")
         logger.exception(e)
 
-        kopf.error(
+        kopf.exception(
             spec,
             reason='DeletionError',
             message=error_msg
@@ -759,7 +817,7 @@ async def resume_store(spec, name, namespace, status, patch, logger, **kwargs):
 
             if not release_exists:
                 logger.warning(f"[{name}] Release doesn't exist, may need to re-provision")
-                patch.status = build_status_update(
+                patch['status'] = build_status_update(
                     phase='Failed',
                     message='Controller restarted during provisioning, release not found'
                 )
@@ -785,7 +843,7 @@ async def resume_store(spec, name, namespace, status, patch, logger, **kwargs):
                 admin_url = f"http://{store_id}.{base_domain}/wp-admin"
                 ready_at = get_timestamp()
 
-                patch.status = build_status_update(
+                patch['status'] = build_status_update(
                     phase='Ready',
                     url=store_url,
                     admin_url=admin_url,

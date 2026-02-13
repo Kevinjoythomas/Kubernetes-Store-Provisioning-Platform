@@ -1,0 +1,46 @@
+{{- if and .Values.api.enabled .Values.api.serviceAccount.create -}}
+---
+# ServiceAccount for the API
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.api.serviceAccount.name | default "store-api" }}
+  namespace: {{ include "platform.namespace" . }}
+  labels:
+    {{- include "platform.api.labels" . | nindent 4 }}
+
+---
+# ClusterRole with permissions for the API
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "platform.fullname" . }}-api
+  labels:
+    {{- include "platform.api.labels" . | nindent 4 }}
+rules:
+# Store CRD permissions - API only needs to read, create, and delete stores
+- apiGroups: ["platform.urumi.io"]
+  resources: ["stores"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+# Store status - read-only for the API
+- apiGroups: ["platform.urumi.io"]
+  resources: ["stores/status"]
+  verbs: ["get"]
+
+---
+# ClusterRoleBinding for the API
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "platform.fullname" . }}-api
+  labels:
+    {{- include "platform.api.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "platform.fullname" . }}-api
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.api.serviceAccount.name | default "store-api" }}
+  namespace: {{ include "platform.namespace" . }}
+{{- end }}
