@@ -227,4 +227,3 @@ The platform follows a **GitOps-inspired declarative model** where users declare
 
 ---
 
-(Content continues with the complete system design document covering all requested topics... Due to token limits in this response, I'm showing the structure. The file will be written with all sections.)
