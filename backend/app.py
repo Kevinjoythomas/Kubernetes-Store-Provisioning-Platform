@@ -163,7 +163,7 @@ def validate_store_input(data: dict) -> tuple[bool, str]:
 
     # Check if medusa (not yet implemented)
     if store_type == 'medusa':
-        return False, "Medusa support coming soon — architecture ready but not yet implemented"
+        return False, "Medusa support coming soon , architecture ready but not yet implemented"
 
     return True, ""
 
